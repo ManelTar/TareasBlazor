@@ -1,0 +1,131 @@
+﻿@page "/"
+@using TareasBlazor.Models
+@using TareasBlazor.Services
+@inject TareasService TareasService
+
+<h1 class="text-dark text-center fw-bold">Lista de Tareas</h1>
+
+@if (!string.IsNullOrEmpty(mensajeError))
+{
+    <div class="alert alert-danger">@mensajeError</div>
+}
+else
+{
+    <div class="container">
+        <div class="input-group mb-3">
+            <input type="text" class="form-control" @bind="nuevaTarea" placeholder="Nueva tarea..." style="width: 70%;" />
+            <input type="date" class="form-control" @bind="fechaVencimiento" style="width: 10%;" />
+            <button class="btn" style="background-color: mediumseagreen; color: papayawhip" @onclick="AgregarTarea">➕ Agregar</button>
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <select @bind="estadoFiltro" class="dropdown-header" style="place-self: end">
+            <option value="">Mostrar todas</option>
+            <option value="Completada">Mostrar completadas</option>
+            <option value="Pendiente">Mostrar pendientes</option>
+        </select>
+    </div>
+
+    <ul class="list-group">
+        @foreach (var tarea in tareasFiltradas)
+        {
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input me-2" @bind="tarea.Completada" />
+                    <span class="@(tarea.Completada ? "text-decoration-line-through text-muted" : "")">
+                        @tarea.Nombre
+                    </span>
+                </div>
+                <button class="btn btn-danger" @onclick="() => EliminarTarea(tarea.Id)">🗑</button>
+            </li>
+        }
+    </ul>
+}
+
+
+@code {
+    private List<Tarea> tareas = new();
+    private string nuevaTarea = string.Empty;
+    private DateTime fechaVencimiento = DateTime.Today;
+    private string estadoFiltro = string.Empty;
+    private string mensajeError = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            tareas = await TareasService.ObtenerTareas();
+
+            // Suscribimos el evento para que se actualicen las tareas automáticamente
+            foreach (var tarea in tareas)
+            {
+                tarea.OnCompletadaChanged += ActualizarTarea;
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeError = "Error al cargar las tareas: " + ex.Message;
+        }
+    }
+
+    private async Task AgregarTarea()
+    {
+        if (!string.IsNullOrWhiteSpace(nuevaTarea))
+        {
+            try
+            {
+                var tarea = new Tarea { Nombre = nuevaTarea, Completada = false };
+                await TareasService.AgregarTarea(tarea);
+                tareas = await TareasService.ObtenerTareas();
+
+                // Suscribimos el evento de las nuevas tareas
+                foreach (var t in tareas)
+                {
+                    t.OnCompletadaChanged += ActualizarTarea;
+                }
+
+                nuevaTarea = string.Empty;
+            }
+            catch (Exception ex)
+            {
+                mensajeError = "Error al agregar la tarea: " + ex.Message;
+            }
+        }
+    }
+
+    private async void ActualizarTarea(Tarea tarea)
+    {
+        try
+        {
+            await TareasService.ActualizarTarea(tarea);
+        }
+        catch (Exception ex)
+        {
+            mensajeError = "Error al actualizar la tarea: " + ex.Message;
+        }
+    }
+
+    private async Task EliminarTarea(int id)
+    {
+        try
+        {
+            await TareasService.EliminarTarea(id);
+            tareas = await TareasService.ObtenerTareas();
+
+            // Volvemos a suscribir los eventos después de eliminar una tarea
+            foreach (var tarea in tareas)
+            {
+                tarea.OnCompletadaChanged += ActualizarTarea;
+            }
+        }
+        catch (Exception ex)
+        {
+            mensajeError = "Error al eliminar la tarea: " + ex.Message;
+        }
+    }
+
+    private List<Tarea> tareasFiltradas => string.IsNullOrEmpty(estadoFiltro)
+       ? tareas
+       : tareas.Where(t => (estadoFiltro == "Completada" && t.Completada) || (estadoFiltro == "Pendiente" && !t.Completada)).ToList();
+}
